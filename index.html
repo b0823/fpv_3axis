@@ -1,6 +1,4 @@
 <!doctype html>
-
-
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ExpressLRS Gamepad API Reproduction</title>
@@ -13,21 +11,55 @@
 </style>
 <h1>Gamepad API axis reproduction</h1>
 <p>Move every controller axis through its full range. This page reads only <code>navigator.getGamepads()</code>.</p>
-<button id="reset">Reset ranges</button><button id="copy">Copy report</button>
+<button id="reset">Reset ranges</button><button id="copy">Copy report</button><button id="download">Download JSON log</button><button id="clear">Clear log</button>
+<p id="logStatus">0 input samples recorded</p>
 <div id="axes"></div><pre id="report"></pre>
 <script>
 const minima=[],maxima=[];
+const samples=[];
+const sampleIntervalMs=50;
+let captureStartedAt=performance.now();
+let lastSampleAt=-Infinity;
 const axes=document.querySelector('#axes');
 const report=document.querySelector('#report');
+const logStatus=document.querySelector('#logStatus');
 document.querySelector('#reset').onclick=()=>{minima.length=0;maxima.length=0};
 document.querySelector('#copy').onclick=()=>navigator.clipboard.writeText(report.textContent);
+document.querySelector('#clear').onclick=()=>{samples.length=0;captureStartedAt=performance.now();lastSampleAt=-Infinity;updateLogStatus()};
+document.querySelector('#download').onclick=()=>{
+  const gamepad=[...(navigator.getGamepads?.()??[])].find(Boolean);
+  const log={
+    capturedAt:new Date().toISOString(),
+    userAgent:navigator.userAgent,
+    controller:gamepad?{id:gamepad.id,index:gamepad.index,mapping:gamepad.mapping,connected:gamepad.connected}:null,
+    sampleIntervalMs,
+    samples
+  };
+  const blob=new Blob([JSON.stringify(log,null,2)],{type:'application/json'});
+  const link=document.createElement('a');
+  link.href=URL.createObjectURL(blob);
+  link.download=`gamepad-log-${new Date().toISOString().replace(/[:.]/g,'-')}.json`;
+  link.click();
+  setTimeout(()=>URL.revokeObjectURL(link.href),1000);
+};
+function updateLogStatus(){logStatus.textContent=`${samples.length} input samples recorded`}
 function frame(){
   const gamepad=[...(navigator.getGamepads?.()??[])].find(Boolean);
   if(!gamepad){report.textContent='No gamepad. Move a stick or press a button.';requestAnimationFrame(frame);return}
+  const now=performance.now();
   gamepad.axes.forEach((value,index)=>{
     minima[index]=Math.min(minima[index]??value,value);
     maxima[index]=Math.max(maxima[index]??value,value);
   });
+  if(now-lastSampleAt>=sampleIntervalMs){
+    samples.push({
+      tMs:Math.round(now-captureStartedAt),
+      axes:Array.from(gamepad.axes),
+      buttons:Array.from(gamepad.buttons,button=>({value:button.value,pressed:button.pressed,touched:button.touched}))
+    });
+    lastSampleAt=now;
+    updateLogStatus();
+  }
   axes.innerHTML=gamepad.axes.map((value,index)=>`<div class="axis"><b>axes[${index}]</b><meter min="-1" max="1" value="${value}"></meter><span>${value.toFixed(4)}</span></div>`).join('');
   report.textContent=JSON.stringify({
     userAgent:navigator.userAgent,
