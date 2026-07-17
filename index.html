@@ -1,0 +1,42 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ExpressLRS Gamepad API Reproduction</title>
+<style>
+  body{margin:0;padding:20px;background:#111;color:#eee;font:14px/1.5 monospace}
+  button{min-height:48px;margin:0 8px 12px 0;padding:10px 14px}
+  pre{overflow:auto;padding:14px;background:#000;border:1px solid #555;white-space:pre-wrap}
+  .axis{display:grid;grid-template-columns:70px 1fr 80px;gap:8px;align-items:center;margin:8px 0}
+  meter{width:100%}
+</style>
+<h1>Gamepad API axis reproduction</h1>
+<p>Move every controller axis through its full range. This page reads only <code>navigator.getGamepads()</code>.</p>
+<button id="reset">Reset ranges</button><button id="copy">Copy report</button>
+<div id="axes"></div><pre id="report"></pre>
+<script>
+const minima=[],maxima=[];
+const axes=document.querySelector('#axes');
+const report=document.querySelector('#report');
+document.querySelector('#reset').onclick=()=>{minima.length=0;maxima.length=0};
+document.querySelector('#copy').onclick=()=>navigator.clipboard.writeText(report.textContent);
+function frame(){
+  const gamepad=[...(navigator.getGamepads?.()??[])].find(Boolean);
+  if(!gamepad){report.textContent='No gamepad. Move a stick or press a button.';requestAnimationFrame(frame);return}
+  gamepad.axes.forEach((value,index)=>{
+    minima[index]=Math.min(minima[index]??value,value);
+    maxima[index]=Math.max(maxima[index]??value,value);
+  });
+  axes.innerHTML=gamepad.axes.map((value,index)=>`<div class="axis"><b>axes[${index}]</b><meter min="-1" max="1" value="${value}"></meter><span>${value.toFixed(4)}</span></div>`).join('');
+  report.textContent=JSON.stringify({
+    userAgent:navigator.userAgent,
+    id:gamepad.id,
+    index:gamepad.index,
+    mapping:gamepad.mapping,
+    connected:gamepad.connected,
+    axes:gamepad.axes.map((value,index)=>({index,current:value,min:minima[index],max:maxima[index],range:maxima[index]-minima[index]})),
+    buttons:gamepad.buttons.map((button,index)=>({index,value:button.value,pressed:button.pressed}))
+  },null,2);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
